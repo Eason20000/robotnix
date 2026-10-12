@@ -60,6 +60,19 @@ pub struct LineageDep {
     branch: Option<String>,
 }
 
+// Upstream LineageOS has started adding non-repository entries to
+// `lineage.dependencies` which their roomservice.py understands but which
+// describe no git repo, e.g. `{"type": "kernel", "version": "6.12"}` (seen in
+// android_device_nvidia_foster@lineage-23.2). The repos such entries relate
+// to are still listed explicitly, so for locking purposes they carry no
+// information and are skipped with a notice instead of failing the parse.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum LineageDepEntry {
+    Repository(LineageDep),
+    Other(serde_json::Value),
+}
+
 #[derive(Debug, Error)]
 pub enum PrefetchLineageDepsError {
     #[error("updating lock failed")]
@@ -240,9 +253,21 @@ pub async fn prefetch_lineage_dependencies(
                 if !fs::try_exists(&store_path.join("lineage.dependencies")).await? {
                     (LineageDeps::NoLineageDependenciesFile, None)
                 } else {
-                    let lineage_deps: Vec<LineageDep> = serde_json::from_slice(
+                    let entries: Vec<LineageDepEntry> = serde_json::from_slice(
                         &fs::read(&store_path.join("lineage.dependencies")).await?,
                     )?;
+
+                    let mut lineage_deps = vec![];
+                    for entry in entries {
+                        match entry {
+                            LineageDepEntry::Repository(dep) => lineage_deps.push(dep),
+                            LineageDepEntry::Other(other) => eprintln!(
+                                "Ignoring non-repository lineage.dependencies entry for {}: {}",
+                                path.display(),
+                                other
+                            ),
+                        }
+                    }
 
                     let ldeps = resolve_lineage_dependencies(manifest, &lineage_deps)
                         .map_err(|e| PrefetchLineageDepsError::Resolve(path.clone(), e))?;
@@ -294,5 +319,35 @@ pub fn cleanup_failed_lineage_deps(lockfile: &mut Lockset) {
 
     for path in paths_to_cleanup {
         lockfile.entries.remove(&path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Upstream added non-repository entries (e.g. foster/lineage-23.2's
+    // {"type": "kernel", "version": "6.12"}); they must parse and filter out
+    // instead of failing the whole refresh.
+    #[test]
+    fn non_repository_entries_are_skipped() {
+        let raw = r#"[
+            {"type": "kernel", "version": "6.12"},
+            {"repository": "android_device_nvidia_shield-common", "target_path": "device/nvidia/shield-common"}
+        ]"#;
+        let entries: Vec<LineageDepEntry> = serde_json::from_str(raw).unwrap();
+        assert_eq!(entries.len(), 2);
+        let repos: Vec<LineageDep> = entries
+            .into_iter()
+            .filter_map(|e| match e {
+                LineageDepEntry::Repository(dep) => Some(dep),
+                LineageDepEntry::Other(_) => None,
+            })
+            .collect();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(
+            repos[0].target_path,
+            PathBuf::from("device/nvidia/shield-common")
+        );
     }
 }
