@@ -49,13 +49,12 @@ pub enum NixPrefetchGitError {
     Parse(#[from] serde_json::Error),
 }
 
-pub async fn nix_prefetch_git(
-    repo_url: &Url,
-    revision: &str,
-    fetch_lfs: bool,
-    fetch_submodules: bool,
-) -> Result<NixPrefetchGitOutput, NixPrefetchGitError> {
-    eprintln!("Prefetching `{}`, revision {}...", repo_url, revision);
+/// Extra `nix-prefetch-git` flags for a fetch.
+/// `shallow` maps to `--no-deepClone` ("shallow clone of just the required
+/// ref"). The resulting tree (and therefore hash) is identical to a full
+/// clone since `.git` is stripped either way; only transfer and temp peak
+/// shrink.
+fn extra_args(fetch_lfs: bool, fetch_submodules: bool, shallow: bool) -> Vec<&'static str> {
     let mut flag_args = vec![];
     if fetch_lfs {
         flag_args.push("--fetch-lfs")
@@ -63,12 +62,26 @@ pub async fn nix_prefetch_git(
     if fetch_submodules {
         flag_args.push("--fetch-submodules")
     }
+    if shallow {
+        flag_args.push("--no-deepClone")
+    }
+    flag_args
+}
+
+pub async fn nix_prefetch_git(
+    repo_url: &Url,
+    revision: &str,
+    fetch_lfs: bool,
+    fetch_submodules: bool,
+    shallow: bool,
+) -> Result<NixPrefetchGitOutput, NixPrefetchGitError> {
+    eprintln!("Prefetching `{}`, revision {}...", repo_url, revision);
     let output = Command::new("nix-prefetch-git")
         .arg("--url")
         .arg(repo_url.as_str())
         .arg("--rev")
         .arg(&revision)
-        .args(&flag_args)
+        .args(&extra_args(fetch_lfs, fetch_submodules, shallow))
         .output()
         .await?;
 
@@ -119,4 +132,24 @@ pub async fn git_ls_remote(url: &str, git_ref: &str) -> Result<String, GitLsRemo
     }
 
     Err(GitLsRemoteError::RevNotFound)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shallow_adds_no_deep_clone_flag() {
+        assert_eq!(extra_args(false, false, false), Vec::<&str>::new());
+        assert_eq!(extra_args(true, false, false), vec!["--fetch-lfs"]);
+        assert_eq!(
+            extra_args(false, true, false),
+            vec!["--fetch-submodules"]
+        );
+        assert_eq!(extra_args(false, false, true), vec!["--no-deepClone"]);
+        assert_eq!(
+            extra_args(true, true, true),
+            vec!["--fetch-lfs", "--fetch-submodules", "--no-deepClone"]
+        );
+    }
 }

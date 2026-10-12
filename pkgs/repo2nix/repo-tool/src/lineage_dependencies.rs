@@ -199,6 +199,7 @@ pub async fn prefetch_lineage_dependencies(
     devices: &BTreeMap<String, DeviceInfo>,
     manifest: &Manifest,
     branch: &str,
+    shallow: bool,
 ) -> Result<(), PrefetchLineageDepsError> {
     eprintln!("Building LineageOS-specific dependency tree...");
 
@@ -236,9 +237,9 @@ pub async fn prefetch_lineage_dependencies(
         };
         eprintln!("Fetching LineageOS dependencies for {}...", path.display());
 
-        let (new_deps, new_projects) = match lockfile.update(&path).await {
+        let (new_deps, new_projects) = match lockfile.update(&path, shallow).await {
             Ok(()) => {
-                lockfile.ensure_store_path(&path).await?;
+                lockfile.ensure_store_path(&path, shallow).await?;
 
                 let store_path = &lockfile
                     .entries

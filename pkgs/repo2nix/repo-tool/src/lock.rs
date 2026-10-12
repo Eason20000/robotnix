@@ -34,6 +34,7 @@ pub enum UpdateLockError {
 pub async fn update_lock(
     project: &Project,
     lock: &Option<Lock>,
+    shallow: bool,
 ) -> Result<(Lock, bool), UpdateLockError> {
     let current_commit = if is_commit_id(&project.repo_ref.revision) {
         project.repo_ref.revision.clone()
@@ -59,6 +60,7 @@ pub async fn update_lock(
         &current_commit,
         project.repo_ref.fetch_lfs,
         project.repo_ref.fetch_submodules,
+        shallow,
     )
     .await?;
 
@@ -233,12 +235,12 @@ impl Lockset {
         Ok(())
     }
 
-    pub async fn update(&mut self, project_path: &Path) -> Result<(), UpdateLocksetError> {
+    pub async fn update(&mut self, project_path: &Path, shallow: bool) -> Result<(), UpdateLocksetError> {
         let entry = self
             .entries
             .get_mut(project_path)
             .ok_or(UpdateLocksetError::PathNotFound)?;
-        let (new_lock, updated) = update_lock(&entry.project, &entry.lock)
+        let (new_lock, updated) = update_lock(&entry.project, &entry.lock, shallow)
             .await
             .map_err(|e| UpdateLocksetError::UpdateLock {
                 project_path: project_path.to_path_buf(),
@@ -254,7 +256,7 @@ impl Lockset {
         Ok(())
     }
 
-    pub async fn update_all(&mut self) -> Result<(), UpdateLocksetError> {
+    pub async fn update_all(&mut self, shallow: bool) -> Result<(), UpdateLocksetError> {
         let paths: Vec<_> = self.entries.keys().cloned().collect();
         for (i, path) in paths.iter().enumerate() {
             if self.entries.get(path).unwrap().project.active {
@@ -264,13 +266,17 @@ impl Lockset {
                     i + 1,
                     paths.len()
                 );
-                self.update(path).await?;
+                self.update(path, shallow).await?;
             }
         }
         Ok(())
     }
 
-    pub async fn ensure_store_path(&self, project_path: &Path) -> Result<(), EnsureStorePathError> {
+    pub async fn ensure_store_path(
+        &self,
+        project_path: &Path,
+        shallow: bool,
+    ) -> Result<(), EnsureStorePathError> {
         let entry = self
             .entries
             .get(project_path)
@@ -291,6 +297,7 @@ impl Lockset {
                 &lock.commit,
                 repo_ref.fetch_lfs,
                 repo_ref.fetch_submodules,
+                shallow,
             )
             .await?;
         }

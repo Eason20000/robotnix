@@ -49,6 +49,9 @@ Options:
   missing `TheMuppets` branches) to FILE.
 - `--muppets`: Fetch the proprietary vendor repositories for all devices from
   the GitHub `TheMuppets` org.
+- `--shallow`: Shallow-clone only the required ref (`nix-prefetch-git
+  --no-deepClone`). Less transfer and temp peak; the resulting tree (and
+  therefore recorded hash) is identical to a full clone.
 
 
 ### `repo-tool ensure-store-paths`

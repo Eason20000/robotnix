@@ -50,6 +50,11 @@ enum Args {
 
         #[arg(long)]
         muppets: bool,
+
+        /// Shallow-clone only the required ref (less transfer and temp peak;
+        /// resulting tree and hash are identical to a full clone).
+        #[arg(long)]
+        shallow: bool,
     },
     GetLineageDevices {
         device_metadata_file: PathBuf,
@@ -141,6 +146,7 @@ async fn fetch(
     lineage_device_file: Vec<PathBuf>,
     missing_dep_devs_file: Option<PathBuf>,
     muppets: bool,
+    shallow: bool,
 ) -> Result<(), FetchError> {
     if muppets || lineage_device_file.len() > 0 {
         assert!(
@@ -155,7 +161,7 @@ async fn fetch(
     } else {
         format!("refs/heads/{revision}")
     };
-    let manifest_fetch = nix_prefetch_git(&url, &git_ref, false, false).await?;
+    let manifest_fetch = nix_prefetch_git(&url, &git_ref, false, false, shallow).await?;
 
     let mut manifest_xml =
         recursively_read_manifest_files(&manifest_fetch.path, Path::new("default.xml"))
@@ -168,6 +174,7 @@ async fn fetch(
             &format!("refs/heads/{revision}"),
             false,
             false,
+            shallow,
         )
         .await?;
 
@@ -231,7 +238,7 @@ async fn fetch(
             merge_lineage_devices(&mut all_devices, devices)
                 .map_err(|e| FetchError::MergeLineageDevices(ldf, e))?;
         }
-        prefetch_lineage_dependencies(&mut lockfile, &all_devices, &manifest, &revision)
+        prefetch_lineage_dependencies(&mut lockfile, &all_devices, &manifest, &revision, shallow)
             .await
             .map_err(FetchError::PrefetchLineageDeps)?;
 
@@ -270,7 +277,7 @@ async fn fetch(
     }
 
     lockfile
-        .update_all()
+        .update_all(shallow)
         .await
         .map_err(FetchError::UpdateLockset)?;
     lockfile
@@ -392,7 +399,7 @@ async fn get_build_ids(out_file: PathBuf, lockfiles: Vec<PathBuf>) -> Result<(),
             .expect("path `build/make` is not locked yet in lockfile {lockfile_path}")
             .path;
 
-        lockfile.ensure_store_path(build_make_path).await?;
+        lockfile.ensure_store_path(build_make_path, false).await?;
 
         let build_id_mk_text = fs::read(platform_build_path.join("core/build_id.mk"))
             .await
@@ -437,7 +444,7 @@ async fn ensure_store_paths(
         None => lockfile.entries.keys().cloned().collect(),
     };
     for path in paths {
-        lockfile.ensure_store_path(&path).await?;
+        lockfile.ensure_store_path(&path, false).await?;
     }
 
     Ok(())
@@ -456,6 +463,7 @@ async fn main() -> Result<(), MainError> {
             lineage_device_file,
             missing_dep_devs_file,
             muppets,
+            shallow,
         } => {
             fetch(
                 manifest_url,
@@ -465,6 +473,7 @@ async fn main() -> Result<(), MainError> {
                 lineage_device_file,
                 missing_dep_devs_file,
                 muppets,
+                shallow,
             )
             .await?;
         }
