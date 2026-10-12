@@ -68,6 +68,5 @@ jobs:
         with:
           commit-message: "lineageos: refresh ${{ inputs.branch }}"
           title: "lineageos: refresh ${{ inputs.branch }}"
-          branch: "ci/lineageos-${{ inputs.branch }}"
+          branch: "ci/${{ inputs.branch }}"
           delete-branch: true
-          labels: automated
