@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 robotnix contributors
+# SPDX-License-Identifier: MIT
+
+# LineageOS snapshot refresh, one branch per run (probe-first: 20.0).
+# Mirrors flavors/lineageos/update.sh loop body plus repo-tool --shallow.
+# Validation is CI-only: cargo test, fetch_completed check, df accounting,
+# and the resulting PR re-runs instantiate.yml for free.
+name: "LineageOS update (probe)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "LineageOS branch, e.g. lineage-20.0"
+        required: true
+        default: "lineage-20.0"
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    name: "repo-tool unit tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix develop .#repo2nix --command bash -c 'cd pkgs/repo2nix && cargo test'
+
+  refresh-probe:
+    name: "refresh ${{ inputs.branch }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            # Best-effort disk bound: daemon GCs oldest garbage when free
+            # space gets tight. The probe measures whether this suffices.
+            min-free = 1073741824
+            max-free = 4294967296
+      - name: "Free disk space"
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+      - name: "Refresh device metadata"
+        run: |
+          nix develop --command bash -c 'cd flavors/lineageos && repo-tool get-lineage-devices devices.json'
+      - name: "Fetch branch lock (shallow)"
+        run: |
+          df -h
+          nix develop --command bash -c 'cd flavors/lineageos && v=${{ inputs.branch }} && mkdir -p $v && repo-tool fetch --shallow -r $v -l devices.json --muppets https://github.com/LineageOS/android $v/repo.lock -m $v/missing_dep_devices.json'
+          df -h
+      - name: "Verify fetch_completed"
+        run: |
+          python3 -c "import json,sys; d=json.load(open('flavors/lineageos/${{ inputs.branch }}/repo.lock')); sys.exit(0 if d['fetch_completed'] else 1)"
+      - name: "Create Pull Request"
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "lineageos: refresh ${{ inputs.branch }}"
+          title: "lineageos: refresh ${{ inputs.branch }}"
+          branch: "ci/lineageos-${{ inputs.branch }}"
+          delete-branch: true
+          labels: automated
