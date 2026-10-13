@@ -10620,6 +10620,12 @@
         "revision": "refs/heads/lineage-23.2",
         "fetch_lfs": true,
         "fetch_submodules": false
+      },
+      "lineage-24.0": {
+        "repo_url": "https://github.com/LineageOS/android_device_xiaomi_mars",
+        "revision": "refs/heads/lineage-24.0",
+        "fetch_lfs": true,
+        "fetch_submodules": false
       }
     },
     "default_branch": "lineage-23.2",
@@ -14685,6 +14691,12 @@
         "revision": "refs/heads/lineage-23.2",
         "fetch_lfs": true,
         "fetch_submodules": false
+      },
+      "lineage-24.0": {
+        "repo_url": "https://github.com/LineageOS/android_device_xiaomi_renoir",
+        "revision": "refs/heads/lineage-24.0",
+        "fetch_lfs": true,
+        "fetch_submodules": false
       }
     },
     "default_branch": "lineage-23.2",
@@ -17565,6 +17577,21 @@
       },
       "lineage-24.0": {
         "repo_url": "https://github.com/LineageOS/android_device_samsung_x1s",
+        "revision": "refs/heads/lineage-24.0",
+        "fetch_lfs": true,
+        "fetch_submodules": false
+      }
+    },
+    "default_branch": "lineage-24.0",
+    "period": "W"
+  },
+  "xaga": {
+    "name": "xaga",
+    "vendor": "xiaomi",
+    "build_type": "userdebug",
+    "branches": {
+      "lineage-24.0": {
+        "repo_url": "https://github.com/LineageOS/android_device_xiaomi_xaga",
         "revision": "refs/heads/lineage-24.0",
         "fetch_lfs": true,
         "fetch_submodules": false
